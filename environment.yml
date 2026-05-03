@@ -1,3 +1,4 @@
+# This file is conda environment specification for the healthcare-deserts project.
 name: healthcare-deserts
 
 channels:
@@ -34,7 +35,7 @@ dependencies:
 
   # Visualisation
 
-  - matplotlib=3.9.0
+  - matplotlib=3.9.1
 
   # Utilities
 
