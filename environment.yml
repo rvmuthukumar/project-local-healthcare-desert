@@ -1,0 +1,43 @@
+name: healthcare-deserts
+
+channels:
+
+  - conda-forge
+  - defaults
+
+dependencies:
+
+  # Python — pinned to match the AWS Glue Python 3.12 runtime exactly
+  - python=3.12
+
+  # Geospatial stack — must come from conda-forge.
+    # These packages share compiled C/C++ libraries (GDAL, GEOS, PROJ).
+    # conda-forge resolves the entire binary dependency graph together,
+    # avoiding the version conflicts that pip installs routinely produce.
+
+  - gdal=3.8
+  - geopandas=0.14.4
+  - fiona=1.9.5
+  - pyproj=3.6.1
+  - shapely=2.0.4
+
+  # Database
+
+  - psycopg2=2.9.9
+  - sqlalchemy=2.0.30
+  - geoalchemy2=0.15.1
+
+  # Data wrangling
+
+  - pandas=2.2.2
+  - numpy=1.26.4
+
+  # Visualisation
+
+  - matplotlib=3.9.0
+
+  # Utilities
+
+  - requests=2.31.0
+  - python-dotenv=1.0.1
+  - tqdm=4.66.4
