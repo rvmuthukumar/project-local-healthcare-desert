@@ -1,0 +1,46 @@
+# Specifies the version of the Docker Compose file format. 
+# as of 05/2026 - Version 3.9 is a modern standard compatible with most Docker engine versions.
+version: "3.9"
+
+# The Service definition for the PostGIS database container.
+
+services: # This marks the start of the section where you define the different "containers" or parts of your application.
+  postgis: # This is the internal name given to this specific service. You’ll use this name if other containers need to talk to this database.
+    image: postgis/postgis:16-3.4 # Tells Docker which image to download from Docker Hub. Here, it’s using PostgreSQL 16 with PostGIS 3.4.
+    container_name: healthcare_postgis # Assigns a custom name to the container when it runs. Without this, Docker would give it a random name like project_postgis_1
+    restart: unless-stopped # This is a reliability setting. If the container crashes or the computer reboots, Docker will automatically start it back up unless you manually stopped it.
+    environment: # This section sets environment variables that the PostGIS image uses to configure the database.
+      POSTGRES_USER: postgres # The username for the PostgreSQL database. By default, it’s set to "postgres", which is a common default user.
+      POSTGRES_PASSWORD: postgres # The password for the PostgreSQL database. Again, it’s set to "postgres" for simplicity, but in a production environment, you should use a strong, unique password.
+      POSTGRES_DB: postgres # The name of the default database to create when the container starts. Here, it’s also set to "postgres", but you can change it to something more specific to your application if you like.  
+    ports: # This section maps the container’s internal port to a port on your host machine.
+      - "5432:5432" # Maps the port on your physical computer (left) to the port inside the container (right). This allows you to connect to the database using localhost:5432.
+    volumes: # This section defines how data is stored and persisted. It ensures that your database data isn’t lost when the container stops or is removed.
+      - postgis_data:/var/lib/postgresql/data # This creates a named volume called "postgis_data" that Docker manages. 
+          # It’s stored on your host machine but is abstracted away by Docker. 
+          # The data inside the container at /var/lib/postgresql/data will be saved to this volume,
+          # so even if you delete the container, your data remains intact.
+          # This also ensures your data isn't deleted even when the container stops.
+      - ./setup:/docker-entrypoint-initdb.d # This is a "bind mount. This mounts a local directory called "setup" 
+              # (which should be in the same directory as your docker-compose.yml) to the container’s /docker-entrypoint-initdb.d directory.
+              # the  /docker-entrypoint-initdb.d  is a special directory in the PostGIS image. When the container starts for the first time,
+              # it looks for any .sql or .sh files in this directory and executes them to initialize the database.
+          # So Any SQL scripts .sql or .sh initialization scripts files you place in the "setup" folder will be automatically 
+          # executed when the container starts for the first time, allowing you to set up your database schema, tables, or seed data.
+    healthcheck: # Configures a test to see if the database is actually "ready" to work, not just "running."
+      test: ["CMD-SHELL", "pg_isready -U postgres"] # This command checks if the PostgreSQL server is ready to accept connections. 
+          # It uses the pg_isready utility, which is included in the PostGIS image, and checks using the "postgres" user.
+          # If the command returns a success status, the health check passes. If it fails, Docker will know that the container is not healthy.
+          # This is important because even if the container is running, the database might not be ready to accept connections yet.
+          # By using a health check, you can ensure that other services that depend on the database will only try to connect once it’s actually ready.
+          # The health check will run every 10 seconds, and if it fails, it will retry up to 5 times with a timeout of 5 seconds for each attempt.
+      interval: 10s # It checks every 10 seconds, 
+      timeout: 5s # waits 5 seconds for a response
+      retries: 5 # If it fails 5 times in a row, it will mark the container as unhealthy.
+
+# Named Volumes are a way to persist data in Docker. They are managed by Docker and stored in a location on your host machine that Docker controls.
+volumes:
+  postgis_data: # This defines a named volume called "postgis_data". 
+    # When you run docker-compose up, Docker will create this volume if it doesn't already exist. 
+    # The data stored in this volume will persist even if you stop or remove the container, 
+    # Ensuring that your database data is not lost.

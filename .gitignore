@@ -9,3 +9,7 @@ __pycache__/
 *.egg-info/
 
 .DS_Store
+
+# Only needed if the Conda env was created inside the project
+# with: conda env create -p ./.conda-env -f environment.yml
+.conda-env/
