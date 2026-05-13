@@ -44,7 +44,7 @@ def load_hospitals(cur):
     Constructs POINT geometry using ST_MakePoint(longitude, latitude).
     Note: ST_MakePoint takes X (longitude) first, then Y (latitude).
     """
-    csv_path = RAW / "cms_hospitals.csv"
+    csv_path = RAW / "birthing_friendly_hospitals_geocoded.csv"
     print(f"\nLoading hospitals from {csv_path.name} ...")
 
     df = pd.read_csv(csv_path, low_memory=False, dtype=str)
@@ -52,35 +52,34 @@ def load_hospitals(cur):
     print(df.columns.tolist()  )
 
     # Keep only rows with usable coordinates
-    df = df[df["Latitude"].notna() & df["Longitude"].notna()].copy()
-    df["Latitude"]  = pd.to_numeric(df["Latitude"],  errors="coerce")
-    df["Longitude"] = pd.to_numeric(df["Longitude"], errors="coerce")
-    df = df.dropna(subset=["Latitude", "Longitude"])
+    df = df[df["lat"].notna() & df["lon"].notna()].copy()
+    df["lat"]  = pd.to_numeric(df["lat"],  errors="coerce")
+    df["lon"] = pd.to_numeric(df["lon"], errors="coerce")
+    df = df.dropna(subset=["lat", "lon"])
 
     print(f"  {len(df)} hospitals with valid coordinates")
 
     sql = """
         INSERT INTO hospitals
-            (cms_ccn, facility_name, address, city, state, zip,
-             hospital_type, latitude, longitude, geom)
+            (facility_name, address, city, state, zip,
+              latitude, longitude, geom)
         VALUES
-            (%(ccn)s, %(name)s, %(addr)s, %(city)s, %(state)s, %(zip)s,
-             %(htype)s, %(lat)s, %(lon)s,
+            ( %(name)s, %(addr)s, %(city)s, %(state)s, %(zip)s,
+              %(lat)s, %(lon)s,
              ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326))
-        ON CONFLICT (cms_ccn) DO NOTHING
+        ON CONFLICT (facility_name) DO NOTHING
     """
 
+    # Construct records for batch insertion
     records = [
         {
-            "ccn":   row.get("Provider ID", ""),
-            "name":  row.get("Hospital Name", ""),
-            "addr":  row.get("Address", ""),
-            "city":  row.get("City", ""),
-            "state": row.get("State", ""),
-            "zip":   str(row.get("ZIP Code", "")),
-            "htype": row.get("Hospital Type", ""),
-            "lat":   float(row["Latitude"]),
-            "lon":   float(row["Longitude"]),
+            "name":  row.get("name", ""),
+            "addr":  row.get("addr", ""),
+            "city":  row.get("city", ""),
+            "state": row.get("state", ""),
+            "zip":   str(row.get("zip", "")),
+            "lat":   float(row["lat"]),
+            "lon":   float(row["lon"]),
         }
         for _, row in df.iterrows()
     ]
@@ -104,6 +103,8 @@ def load_census_tracts(cur):
 
     gdf = gpd.read_file(shp_file)
     print(f"  Read {len(gdf)} features (including territories)")
+
+    print(f"Actual columns found: {gdf.columns.tolist()}") # Add this line!
 
     # Filter to 50 states only
     gdf = gdf[~gdf["STATEFP"].isin(TERRITORY_FIPS)].copy()

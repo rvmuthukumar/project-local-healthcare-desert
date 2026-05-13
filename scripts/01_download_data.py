@@ -1,11 +1,20 @@
+
 """
 01_download_data.py
-Downloads all four public datasets to data/raw/.
-Re-running this script is safe — existing files are skipped.
+Downloads all source datasets to data/raw/.
+Re-running is safe — existing files are skipped.
 
-AWS equivalent: Glue job 01_ingest_raw.py uploads files to S3 raw zone.
+Data sources:
+  1. HRSA HPSA Primary Care CSV          — single file, stable URL
+  2. CMS Birthing Friendly Hospitals Geocoded (name, addr, lat, lon)
+  3. Census TIGER/Line 2025 tract files  — one ZIP per state (51 files)
+
+AWS equivalent: Glue job 01_ingest_raw.py uploads each file to S3 raw zone.
 Code change when migrating: add boto3.upload_file() after each download.
+
 """
+
+
 # file and system management
 import os # This is the "Swiss Army Knife" for interacting with your operating system. You’ll likely use it to check if directories exist or to handle environment variables.
 import pathlib # A modern, more readable alternative to os.path. It treats file paths as objects rather than just strings, which makes it much easier to handle paths across different operating systems (Windows vs. Linux).
@@ -23,49 +32,52 @@ RAW = pathlib.Path(os.getenv("DATA_RAW_DIR", "./data/raw")) # This line defines 
 RAW.mkdir(parents=True, exist_ok=True) # This line ensures that the directory specified by RAW exists. If it doesn't exist, it will be created along with any necessary parent directories (thanks to parents=True). The exist_ok=True parameter means that if the directory already exists, no error will be raised, making it safe to run this script multiple times without worrying about directory creation issues.
 
 
-SOURCES = [
+# ── 50 states + DC FIPS codes (no territories) ────────────────────
+# Gaps in sequence: 03,07,14,43,52 are unassigned; territories 60,66,69,72,78
+STATE_FIPS = [
+    "01","02","04","05","06","08","09","10","11","12","13",
+    "15","16","17","18","19","20","21","22","23","24","25",
+    "26","27","28","29","30","31","32","33","34","35","36",
+    "37","38","39","40","41","42","44","45","46","47","48",
+    "49","50","51","53","54","55","56",
+]  # 51 entries: 50 states + DC (11)
+
+# ── Simple datasets (single-file downloads) ────────────────────────
+SIMPLE_SOURCES = [
     {
         "name": "hpsa_primary_care.csv",
-        "url": (
-            "https://data.hrsa.gov/DataDownload/DD_Files/"
-            "BCD_HPSA_FCT_DET_PC.csv"
-        ),
+        "url":  "https://data.hrsa.gov/DataDownload/DD_Files/BCD_HPSA_FCT_DET_PC.csv",
         "description": "HRSA Health Professional Shortage Areas — Primary Care",
     },
     {
-        "name": "cms_hospitals.csv",
-        "url": (
-          #  "https://data.cms.gov/provider-data/sites/default/files/resources/"
-          #  "092a54b2-35ac-4b06-a72e-6f3e90e1a194/"
-          #  "Hospital_General_Information.csv"
-          # https://data.cms.gov/provider-data/api/1/datastore/query/xubh-q36u/0/download?format=csv
-          "https://data.cms.gov/provider-data/sites/default/files/resources/893c372430d9d71a1c52737d01239d47_1770163599/Hospital_General_Information.csv"
+        # CMS Birthing Friendly Hospitals Geocoded
+        # Published by: Centers for Medicare & Medicaid Services (CMS)
+        # Verified live as of May 2026. Contains only CMS-certified
+        # birthing-friendly hospitals with pre-computed lat/lon.
+        # Columns: name, addr, city, state, zip, lat, lon (7 fields)
+        # Note: HIFLD Open Data (the original planned source for all US hospitals)
+        # was permanently shut down by DHS on August 26, 2025.
+        "name": "cms_birthing_hospitals.csv",
+        "url":  (
+            "https://data.cms.gov/provider-data/sites/default/files/resources/"
+            "e7f75e0803a17e22c4e26acf2183e622_1771884335/"
+            "Birthing_Friendly_Hospitals_Geocoded.csv"
         ),
-        "description": "CMS Hospital General Information (name, address, lat/lon)",
-    },
-    {
-        "name": "tl_2025_us_ttract.zip",
-        "url": (
-           # "https://www2.census.gov/geo/tiger/TIGER2022/TRACT/"
-            #"tl_2022_us_tract.zip"
-            "https://www2.census.gov/geo/tiger/TIGER2025/TTRACT/"
-            "tl_2025_us_ttract.zip"
-
-        ),
-        "description": "Census TIGER/Line 2025 — US Census Total Tract Boundaries (~500 MB)",
+        "description": "CMS Birthing Friendly Hospitals Geocoded (name, addr, lat, lon)",
     },
 ]
 
 
-def download_file(name: str, url: str, description: str) -> pathlib.Path:
-    dest = RAW / name
+def download_file(name: str, url: str, description: str,
+                  dest_dir: pathlib.Path = RAW) -> pathlib.Path:
+    dest = dest_dir / name
     if dest.exists():
         print(f"  [skip] {name} already exists")
         return dest
 
     print(f"  [download] {description}")
     resp = requests.get(url, stream=True, timeout=300)
-    resp.raise_for_status() # This line checks if the HTTP request was successful. If the server returns an error status code (like 404 or 500), raise_for_status() will throw an exception, which helps you catch issues with the download immediately instead of silently failing or saving an error page as your dataset.
+    resp.raise_for_status()
 
     total_bytes = int(resp.headers.get("content-length", 0))
     with open(dest, "wb") as f, tqdm(
@@ -79,25 +91,58 @@ def download_file(name: str, url: str, description: str) -> pathlib.Path:
     return dest
 
 
-def extract_zip(zip_path: pathlib.Path) -> pathlib.Path:
-    extract_dir = zip_path.parent / zip_path.stem
-    if extract_dir.exists():
-        print(f"  [skip] {zip_path.stem}/ already extracted")
+def extract_zip(zip_path: pathlib.Path, extract_dir: pathlib.Path) -> pathlib.Path:
+    if extract_dir.exists() and any(extract_dir.glob("*.shp")):
+        print(f"  [skip] {extract_dir.name}/ already extracted")
         return extract_dir
 
+    extract_dir.mkdir(parents=True, exist_ok=True)
     print(f"  [extract] {zip_path.name} → {extract_dir.name}/")
     with zipfile.ZipFile(zip_path) as z:
         z.extractall(extract_dir)
     return extract_dir
 
 
+def download_tiger_tracts() -> None:
+    """
+    Downloads 51 per-state TIGER/Line 2025 tract shapefiles.
+    URL pattern: https://www2.census.gov/geo/tiger/TIGER2025/TRACT/
+                 tl_2025_{fips}_tract.zip
+
+    Each ZIP extracts to: data/raw/tracts/tl_2025_{fips}_tract/
+    The load script concatenates all 51 GeoDataFrames into one.
+
+    Why per-state files?
+    Census no longer publishes a single national tract shapefile in TIGER2025.
+    Each state's file is ~1-15 MB; total download is ~200-300 MB across all states.
+    """
+    tracts_dir = RAW / "tracts"
+    tracts_dir.mkdir(exist_ok=True)
+
+    base_url = "https://www2.census.gov/geo/tiger/TIGER2025/TRACT"
+    total = len(STATE_FIPS)
+
+    print(f"\nDownloading {total} state tract files to {tracts_dir}/")
+    for i, fips in enumerate(STATE_FIPS, 1):
+        name    = f"tl_2025_{fips}_tract.zip"
+        url     = f"{base_url}/{name}"
+        desc    = f"TIGER 2025 Census Tracts — state FIPS {fips} ({i}/{total})"
+        zip_path     = download_file(name, url, desc, dest_dir=tracts_dir)
+        extract_dir  = tracts_dir / f"tl_2025_{fips}_tract"
+        extract_zip(zip_path, extract_dir)
+
+    print(f"  All {total} state tract files downloaded and extracted.")
+
+
 if __name__ == "__main__":
     print(f"\nDownloading datasets to {RAW.resolve()}\n")
-    for source in SOURCES:
-        print(source["description"])
-        dest = download_file(**source)
-        if dest.suffix == ".zip":
-            extract_zip(dest)
+
+    print("── Simple datasets ──────────────────────────────────────")
+    for source in SIMPLE_SOURCES:
+        download_file(**source)
+
+    print("\n── TIGER 2025 Census Tract files ────────────────────────")
+    download_tiger_tracts()
 
     print("\nAll source files staged to data/raw/")
     print("Run:  python scripts/02_load_data.py")
