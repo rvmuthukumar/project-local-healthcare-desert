@@ -1,4 +1,7 @@
 -- Hospitals: one point per facility (CMS Provider of Services file)
+-- changes from original
+    -- geom        GEOMETRY(MULTIPOLYGON, 4326)   -- 2025: Polygon (not MultiPolygon)
+    -- pct_poverty          NUMERIC(10,4) -- % of Population Below 100% Poverty (from HPSA)
 
 DROP TABLE IF EXISTS hospitals CASCADE;
 
@@ -41,7 +44,7 @@ CREATE TABLE IF NOT EXISTS census_tracts (
     tract_ce    CHAR(6),                  -- raw tract code
     aland       BIGINT,                   -- land area in square metres
     awater      BIGINT,                   -- water area in square metres
-    geom        GEOMETRY(POLYGON, 4326)   -- 2025: Polygon (not MultiPolygon)
+    geom        GEOMETRY(MULTIPOLYGON, 4326)   -- 2025: Polygon (not MultiPolygon)
 );
 
 -- HPSA designations: shortage area polygons (HRSA BHW)
@@ -65,7 +68,7 @@ CREATE TABLE IF NOT EXISTS hpsa_designations (
     rural_status         TEXT,       -- Rural / Non-Rural / Partially Rural
     metropolitan_ind     TEXT,       -- Metropolitan / Non-Metropolitan
     underserved_pop      INTEGER,    -- HPSA Estimated Underserved Population
-    pct_poverty          NUMERIC(5,2) -- % of Population Below 100% Poverty (from HPSA)
+    pct_poverty          NUMERIC(10,4) -- % of Population Below 100% Poverty (from HPSA)
 );
 
 
