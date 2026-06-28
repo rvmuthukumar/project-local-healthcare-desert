@@ -59,6 +59,8 @@ SIMPLE_SOURCES = [
         # was permanently shut down by DHS on August 26, 2025.
         "name": "cms_birthing_hospitals.csv",
         "url":  (
+            # "https://data.cms.gov/provider-data/sites/default/files/resources/"
+            #"e7f75e0803a17e22c4e26acf2183e622_1778277932/"
             "https://data.cms.gov/provider-data/sites/default/files/resources/"
             "e7f75e0803a17e22c4e26acf2183e622_1771884335/"
             "Birthing_Friendly_Hospitals_Geocoded.csv"
